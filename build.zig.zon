@@ -1,0 +1,7 @@
+.{
+    .name = .uwa,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.2",
+    .paths = .{""},
+    .fingerprint = 0xf7b0cd561c88466d,
+}
