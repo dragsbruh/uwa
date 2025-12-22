@@ -193,7 +193,7 @@ pub fn Elf(comptime T: type) type {
         ident: Ident,
         type: EType,
         machine: EMachine,
-        version: u8 = 0x1,
+        version: u32 = 0x1,
         entry: T,
 
         phoff: T = 0x0,
