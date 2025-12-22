@@ -14,25 +14,25 @@ pub fn main() !void {
     var stdout_file = std.fs.File.stdout().writer(&.{});
     const stdout = &stdout_file.interface;
 
-    var code_writer = std.Io.Writer.Allocating.init(allocator);
-    defer code_writer.deinit();
+    var code_accum = std.Io.Writer.Allocating.init(allocator);
+    defer code_accum.deinit();
+
+    const writer = &code_accum.writer;
 
     const msg = "sesbian lex\n";
 
-    try rv32.emitProgram(&code_writer.writer, &.{
-        rv32.Instruction{ .addi = .{ rv32.Register.a0, rv32.Register.x0, 1 } },
-        rv32.Instruction{ .auipc = .{ rv32.Register.a1, 0 } },
-        rv32.Instruction{ .addi = .{ rv32.Register.a1, rv32.Register.a1, 0 } },
-        rv32.Instruction{ .addi = .{ rv32.Register.a2, rv32.Register.x0, msg.len } },
-        rv32.Instruction{ .addi = .{ rv32.Register.a7, rv32.Register.x0, 64 } }, // sys_write
-        rv32.Instruction{ .ecall = {} },
+    try rv32.encoder.addi(writer, .a0, .x0, 1);
+    try rv32.encoder.auipc(writer, .a1, 0);
+    try rv32.encoder.addi(writer, .a1, .a1, 0);
+    try rv32.encoder.addi(writer, .a2, .x0, msg.len);
+    try rv32.encoder.addi(writer, .a7, .x0, 64);
+    try rv32.encoder.ecall(writer);
 
-        rv32.Instruction{ .addi = .{ rv32.Register.a0, rv32.Register.x0, 0 } },
-        rv32.Instruction{ .addi = .{ rv32.Register.a7, rv32.Register.x0, 93 } }, // sys_exit
-        rv32.Instruction{ .ecall = {} },
-    });
+    try rv32.encoder.addi(writer, .a0, .x0, 69);
+    try rv32.encoder.addi(writer, .a7, .x0, 93);
+    try rv32.encoder.ecall(writer);
 
-    const code = try code_writer.toOwnedSlice();
+    const code = try code_accum.toOwnedSlice();
     defer allocator.free(code);
 
     const choice = elf32;

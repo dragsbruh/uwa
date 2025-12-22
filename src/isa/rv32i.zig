@@ -71,8 +71,6 @@ pub const Register = enum(u5) {
     x31,
 };
 
-pub const Immediate = i32;
-
 pub const NativeInstruction = union(enum) {
     pub const RType = packed struct {
         opcode: u7,
@@ -184,41 +182,37 @@ pub const NativeInstruction = union(enum) {
     J: JType,
 };
 
-pub const Operand = union(enum) { Imm };
+pub const encoder = struct {
+    pub fn addi(writer: *std.Io.Writer, rd: Register, rs1: Register, imm: i12) !void {
+        const native = NativeInstruction{ .I = .{
+            .opcode = 0x13,
+            .funct3 = 0x0,
+            .rd = rd,
+            .rs1 = rs1,
+            .imm = @bitCast(imm),
+        } };
+        try native.write(writer);
+    }
 
-pub const Instruction = union(enum) {
-    /// rd, rs1, imm
-    addi: struct { Register, Register, Immediate },
-    auipc: struct { Register, Immediate },
-    ecall,
+    pub fn auipc(writer: *std.Io.Writer, rd: Register, imm: i20) !void {
+        const native = NativeInstruction{ .U = .{
+            .opcode = 0x17,
+            .rd = rd,
+            .imm = @bitCast(imm),
+        } };
+        try native.write(writer);
+    }
 
-    pub fn native(self: Instruction) NativeInstruction {
-        return switch (self) {
-            .auipc => |i| NativeInstruction{ .U = .{
-                .opcode = 0x17,
-                .rd = i.@"0",
-                .imm = @bitCast(@as(i20, @intCast(i.@"1"))),
-            } },
-            .addi => |i| NativeInstruction{ .I = .{
-                .opcode = 0x13,
+    pub fn ecall(writer: *std.Io.Writer) !void {
+        const native = NativeInstruction{
+            .I = .{
+                .opcode = 0x73,
                 .funct3 = 0x0,
-                .rd = i.@"0",
-                .rs1 = i.@"1",
-                .imm = @bitCast(@as(i12, @intCast(i.@"2"))),
-            } },
-            .ecall => NativeInstruction{
-                .I = .{
-                    .opcode = 0x73,
-                    .funct3 = 0x0,
-                    .rd = .x0,
-                    .rs1 = .x0,
-                    .imm = 0x0,
-                },
+                .rd = .x0,
+                .rs1 = .x0,
+                .imm = 0x0,
             },
         };
+        try native.write(writer);
     }
 };
-
-pub fn emitProgram(writer: *std.Io.Writer, program: []const Instruction) !void {
-    for (program) |p| try p.native().write(writer);
-}
