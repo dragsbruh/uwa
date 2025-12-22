@@ -1,49 +1,38 @@
 const std = @import("std");
 
 pub const Register = enum(u5) {
-    pub const Alias = enum(u5) {
-        zero = 0,
-        ra = 1,
-        sp = 2,
-        gp = 3,
-        tp = 4,
-
-        t0 = 5,
-        t1 = 6,
-        t2 = 7,
-
-        s0 = 8,
-        s1 = 9,
-
-        a0 = 10,
-        a1 = 11,
-        a2 = 12,
-        a3 = 13,
-        a4 = 14,
-        a5 = 15,
-        a6 = 16,
-        a7 = 17,
-
-        s2 = 18,
-        s3 = 19,
-        s4 = 20,
-        s5 = 21,
-        s6 = 22,
-        s7 = 23,
-        s8 = 24,
-        s9 = 25,
-        s10 = 26,
-        s11 = 27,
-
-        t3 = 28,
-        t4 = 29,
-        t5 = 30,
-        t6 = 31,
-
-        pub fn resolve(self: Alias) Register {
-            return @enumFromInt(@intFromEnum(self));
-        }
-    };
+    pub const zero = Register.x0;
+    pub const ra = Register.x1;
+    pub const sp = Register.x2;
+    pub const gp = Register.x3;
+    pub const tp = Register.x4;
+    pub const t0 = Register.x5;
+    pub const t1 = Register.x6;
+    pub const t2 = Register.x7;
+    pub const s0 = Register.x8;
+    pub const s1 = Register.x9;
+    pub const a0 = Register.x10;
+    pub const a1 = Register.x11;
+    pub const a2 = Register.x12;
+    pub const a3 = Register.x13;
+    pub const a4 = Register.x14;
+    pub const a5 = Register.x15;
+    pub const a6 = Register.x16;
+    pub const a7 = Register.x17;
+    pub const s2 = Register.x18;
+    pub const s3 = Register.x19;
+    pub const s4 = Register.x20;
+    pub const s5 = Register.x21;
+    pub const s6 = Register.x22;
+    pub const s7 = Register.x23;
+    pub const s8 = Register.x24;
+    pub const s9 = Register.x25;
+    pub const s10 = Register.x26;
+    pub const s11 = Register.x27;
+    pub const t3 = Register.x28;
+    pub const t4 = Register.x29;
+    pub const t5 = Register.x30;
+    pub const t6 = Register.x31;
 
     x0,
     x1,
@@ -229,3 +218,7 @@ pub const Instruction = union(enum) {
         };
     }
 };
+
+pub fn emitProgram(writer: *std.Io.Writer, program: []const Instruction) !void {
+    for (program) |p| try p.native().write(writer);
+}

@@ -19,16 +19,18 @@ pub fn main() !void {
 
     const msg = "sesbian lex\n";
 
-    try (rv32.Instruction{ .addi = .{ rv32.Register.Alias.a0.resolve(), rv32.Register.x0, 1 } }).native().write(&code_writer.writer);
-    try (rv32.Instruction{ .auipc = .{ rv32.Register.Alias.a1.resolve(), 0 } }).native().write(&code_writer.writer); // rel hi
-    try (rv32.Instruction{ .addi = .{ rv32.Register.Alias.a1.resolve(), rv32.Register.Alias.a1.resolve(), 0 } }).native().write(&code_writer.writer); // rel lo
-    try (rv32.Instruction{ .addi = .{ rv32.Register.Alias.a2.resolve(), rv32.Register.x0, msg.len } }).native().write(&code_writer.writer);
-    try (rv32.Instruction{ .addi = .{ rv32.Register.Alias.a7.resolve(), rv32.Register.x0, 64 } }).native().write(&code_writer.writer); // sys_exit
-    try (rv32.Instruction{ .ecall = {} }).native().write(&code_writer.writer);
+    try rv32.emitProgram(&code_writer.writer, &.{
+        rv32.Instruction{ .addi = .{ rv32.Register.a0, rv32.Register.x0, 1 } },
+        rv32.Instruction{ .auipc = .{ rv32.Register.a1, 0 } },
+        rv32.Instruction{ .addi = .{ rv32.Register.a1, rv32.Register.a1, 0 } },
+        rv32.Instruction{ .addi = .{ rv32.Register.a2, rv32.Register.x0, msg.len } },
+        rv32.Instruction{ .addi = .{ rv32.Register.a7, rv32.Register.x0, 64 } }, // sys_write
+        rv32.Instruction{ .ecall = {} },
 
-    try (rv32.Instruction{ .addi = .{ rv32.Register.Alias.a0.resolve(), rv32.Register.x0, 69 } }).native().write(&code_writer.writer);
-    try (rv32.Instruction{ .addi = .{ rv32.Register.Alias.a7.resolve(), rv32.Register.x0, 93 } }).native().write(&code_writer.writer); // sys_exit
-    try (rv32.Instruction{ .ecall = {} }).native().write(&code_writer.writer);
+        rv32.Instruction{ .addi = .{ rv32.Register.a0, rv32.Register.x0, 0 } },
+        rv32.Instruction{ .addi = .{ rv32.Register.a7, rv32.Register.x0, 93 } }, // sys_exit
+        rv32.Instruction{ .ecall = {} },
+    });
 
     const code = try code_writer.toOwnedSlice();
     defer allocator.free(code);
