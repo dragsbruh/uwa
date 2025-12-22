@@ -116,6 +116,9 @@ pub fn Elf(comptime T: type) type {
                 addralign: T = 0x1,
                 vsize: T = 0x0, // for NOBITS
                 symbols: []const Symbol.Abstract = &.{},
+
+                relocations: []const Rela.Abstract = &.{},
+                rela_name: ?[]const u8 = null,
             };
 
             name: u32,
@@ -123,7 +126,7 @@ pub fn Elf(comptime T: type) type {
             flags: T,
             addr: T = 0x0,
             offset: T,
-            size: u32,
+            size: T,
             link: u32 = 0x0,
             info: u32 = 0x0,
             addralign: T = 0x1,
@@ -190,16 +193,50 @@ pub fn Elf(comptime T: type) type {
             };
         };
 
+        pub const Rela = extern struct {
+            pub const Addend = switch (bitwidth) {
+                .u32 => i32,
+                .u64 => i64,
+            };
+
+            pub const SymbolIndex = switch (bitwidth) {
+                .u32 => u24,
+                .u64 => u32,
+            };
+
+            pub const RelaType = switch (bitwidth) {
+                .u32 => u8,
+                .u64 => u32,
+            };
+
+            pub const Section = struct {
+                name: []const u8,
+                data: []const u8,
+                link: u32,
+            };
+
+            pub const Abstract = struct {
+                symbol: []const u8,
+                addend: Addend,
+                offset: T,
+                type: T,
+            };
+
+            offset: T,
+            info: T,
+            addend: Addend,
+        };
+
         ident: Ident,
         type: EType,
         machine: EMachine,
         version: u32 = 0x1,
-        entry: T,
+        entry: T = 0x0,
 
         phoff: T = 0x0,
         shoff: T,
 
-        flags: u32,
+        flags: u32 = 0x0,
         ehsize: u16 = @sizeOf(@This()),
 
         phentsize: u16 = 0x0,
@@ -222,13 +259,19 @@ pub fn Elf(comptime T: type) type {
             var strtab = try buildStrtab(allocator, sections, false);
             defer strtab.deinit(allocator);
 
-            const symtab = try buildSymtab(allocator, strtab.map, sections, 1); // null
-            defer allocator.free(symtab.data);
+            var symtab = try buildSymtab(allocator, strtab.map, sections, 1); // null
+            defer symtab.deinit(allocator);
 
-            const after_headers = @sizeOf(@This()) + @sizeOf(Section) * (sections.len + 4); // null, strtab, shstrtab, symtab
+            var rela = try buildRelas(allocator, symtab.map, sections);
+            defer rela.deinit(allocator);
 
-            const section_offsets = try allocator.alloc(T, sections.len + 3);
+            const after_headers = @sizeOf(@This()) + @sizeOf(Section) * (sections.len + rela.sections.len + 4); // null, strtab, shstrtab, symtab
+
+            const section_offsets = try allocator.alloc(T, sections.len);
             defer allocator.free(section_offsets);
+
+            const rela_offsets = try allocator.alloc(T, rela.sections.len);
+            defer allocator.free(rela_offsets);
 
             var offset: T = @intCast(after_headers);
             for (sections, 0..) |sect, i| if (sect.type != .NOBITS) {
@@ -236,21 +279,24 @@ pub fn Elf(comptime T: type) type {
                 offset = @as(T, @intCast(sect.data.len)) + section_offsets[i];
             };
 
-            const shstrtab_offset: T = if (sections.len == 0) @intCast(after_headers) else section_offsets[sections.len - 1] + @as(T, @intCast(sections[sections.len - 1].data.len));
+            for (rela.sections, 0..) |sect, i| {
+                rela_offsets[i] = std.mem.alignForward(T, offset, @sizeOf(T));
+                offset = @as(T, @intCast(sect.data.len)) + rela_offsets[i];
+            }
+
+            const shstrtab_offset: T = offset;
             const strtab_offset: T = shstrtab_offset + @as(T, @intCast(shstrtab.data.len));
             const symtab_offset: T = std.mem.alignForward(T, strtab_offset + @as(T, @intCast(strtab.data.len)), @sizeOf(T));
 
             try writer.writeStruct(Elf(T){
-                .entry = 0x0,
                 .ident = .{
                     .osabi = osabi,
                 },
-                .flags = 0x0,
                 .machine = machine,
                 .shoff = @sizeOf(@This()),
                 .shentsize = @sizeOf(Section),
-                .shnum = @intCast(sections.len + 4),
-                .shstrndx = @intCast(sections.len + 1),
+                .shnum = @intCast(sections.len + rela.sections.len + 4),
+                .shstrndx = @intCast(sections.len + rela.sections.len + 1),
                 .type = .REL,
             }, .little);
 
@@ -264,6 +310,19 @@ pub fn Elf(comptime T: type) type {
                     .offset = section_offsets[i],
                     .flags = sect.flags,
                     .type = sect.type,
+                }, .little);
+            }
+
+            for (rela.sections, 0..) |sect, i| {
+                try writer.writeStruct(Section{
+                    .size = @intCast(sect.data.len),
+                    .name = shstrtab.map.get(sect.name) orelse unreachable,
+                    .flags = 0,
+                    .offset = rela_offsets[i],
+                    .type = .RELA,
+                    .entsize = @sizeOf(Rela),
+                    .link = @intCast(sections.len + rela.sections.len + 3),
+                    .info = sect.link,
                 }, .little);
             }
 
@@ -285,7 +344,7 @@ pub fn Elf(comptime T: type) type {
 
             try writer.writeStruct(Section{
                 .name = shstrtab.map.get(names.symtab) orelse unreachable,
-                .link = @intCast(sections.len + 2),
+                .link = @intCast(sections.len + rela.sections.len + 2),
                 .size = @intCast(symtab.data.len),
                 .entsize = @sizeOf(Symbol.Entry),
                 .info = symtab.nonlocal_start,
@@ -302,6 +361,12 @@ pub fn Elf(comptime T: type) type {
                 written = section_offsets[i] + @as(T, @intCast(sect.data.len));
             }
 
+            for (rela.sections, 0..) |sect, i| {
+                for (written..rela_offsets[i]) |_| try writer.writeByte(0);
+                try writer.writeAll(sect.data);
+                written = rela_offsets[i] + @as(T, @intCast(sect.data.len));
+            }
+
             for (written..shstrtab_offset) |_| try writer.writeByte(0); // alignment is 0x1 but jic
             try writer.writeAll(shstrtab.data);
             written += @intCast(shstrtab.data.len);
@@ -315,17 +380,70 @@ pub fn Elf(comptime T: type) type {
             written = symtab_offset + @as(T, @intCast(symtab.data.len));
         }
 
+        pub fn buildRelas(allocator: std.mem.Allocator, symtab: std.StringHashMapUnmanaged(Rela.SymbolIndex), sections: []const Section.Abstract) !struct {
+            sections: []Rela.Section,
+
+            pub fn deinit(self: *@This(), ally: std.mem.Allocator) void {
+                for (self.sections) |sect| ally.free(sect.data);
+                ally.free(self.sections);
+            }
+        } {
+            var rela_count: usize = 0;
+            for (sections) |sect| {
+                if (sect.relocations.len > 0) rela_count += 1;
+            }
+
+            var acc = std.Io.Writer.Allocating.init(allocator);
+            defer acc.deinit();
+
+            var reli: usize = 0;
+            const relas = try allocator.alloc(Rela.Section, rela_count);
+            for (sections, 0..) |sect, seci| {
+                if (sect.relocations.len > 0) {
+                    for (sect.relocations) |rel| {
+                        const symndx = symtab.get(rel.symbol) orelse return error.UnknownSymbol;
+                        try acc.writer.writeStruct(Rela{
+                            .addend = 0x0,
+                            .info = (@as(T, @intCast(symndx)) << @bitSizeOf(Rela.RelaType)) | @as(T, @intCast(rel.type)),
+                            .offset = rel.offset,
+                        }, .little);
+                    }
+
+                    const rela_name = sect.rela_name orelse return error.MissingRelaname;
+                    relas[reli] = Rela.Section{
+                        .data = try acc.toOwnedSlice(),
+                        .link = @intCast(seci + 1),
+                        .name = rela_name,
+                    };
+                    reli += 1;
+                }
+            }
+
+            return .{
+                .sections = relas,
+            };
+        }
+
         pub fn buildSymtab(allocator: std.mem.Allocator, strtab: std.StringHashMapUnmanaged(u32), sections: []const Section.Abstract, section_start: usize) !struct {
             data: []u8,
+            map: std.StringHashMapUnmanaged(Rela.SymbolIndex),
             nonlocal_start: u32,
+
+            pub fn deinit(self: *@This(), ally: std.mem.Allocator) void {
+                ally.free(self.data);
+                self.map.deinit(ally);
+            }
         } {
             var acc = std.Io.Writer.Allocating.init(allocator);
             defer acc.deinit();
+
+            var map = std.StringHashMapUnmanaged(Rela.SymbolIndex).empty;
 
             const writer = &acc.writer;
 
             try writer.writeStruct(Symbol.NULL, .little);
 
+            var sym_index: Rela.SymbolIndex = 1;
             var nonlocal_start: u32 = 1;
             inline for (0..2) |l| {
                 const local_only = l == 0;
@@ -340,11 +458,14 @@ pub fn Elf(comptime T: type) type {
                             .shndx = @intCast(section_start + shndx),
                             .size = sym.size,
                         }, .little);
+                        try map.put(allocator, sym.name, sym_index);
+                        sym_index += 1;
                     }
                 };
             }
 
             return .{
+                .map = map,
                 .data = try acc.toOwnedSlice(),
                 .nonlocal_start = nonlocal_start,
             };
@@ -384,13 +505,23 @@ pub fn Elf(comptime T: type) type {
                 }
 
                 for (sections) |sect| {
-                    const gop = try map.getOrPut(allocator, sect.name);
-                    if (gop.found_existing) continue;
+                    if (sect.rela_name) |name| {
+                        const gop = try map.getOrPut(allocator, name);
+                        if (!gop.found_existing) {
+                            gop.value_ptr.* = offset;
+                            try writer.writeAll(name);
+                            try writer.writeByte(0);
+                            offset += @intCast(name.len + 1);
+                        }
+                    }
 
-                    try map.put(allocator, sect.name, offset);
-                    try writer.writeAll(sect.name);
-                    try writer.writeByte(0);
-                    offset += @intCast(sect.name.len + 1);
+                    const gop = try map.getOrPut(allocator, sect.name);
+                    if (!gop.found_existing) {
+                        gop.value_ptr.* = offset;
+                        try writer.writeAll(sect.name);
+                        try writer.writeByte(0);
+                        offset += @intCast(sect.name.len + 1);
+                    }
                 }
             } else {
                 for (sections) |sect| {
