@@ -121,7 +121,7 @@ pub fn Elf(comptime T: type) type {
             name: u32,
             type: Type,
             flags: T,
-            addr: T,
+            addr: T = 0x0,
             offset: T,
             size: u32,
             link: u32 = 0x0,
@@ -231,22 +231,14 @@ pub fn Elf(comptime T: type) type {
             defer allocator.free(section_offsets);
 
             var offset: T = @intCast(after_headers);
-            for (sections, 0..) |sect, i| {
-                if (sect.type == .NOBITS) continue;
+            for (sections, 0..) |sect, i| if (sect.type != .NOBITS) {
                 section_offsets[i] = std.mem.alignForward(T, offset, sect.addralign);
-                offset += @intCast(sect.data.len);
-            }
+                offset = @as(T, @intCast(sect.data.len)) + section_offsets[i];
+            };
 
-            // ... regular sections
-            // section string table
-            // symbol string table
-            // symbol table
-            // TODO: rel tables
-
-            const last_offset = if (sections.len == 0) after_headers else section_offsets[sections.len - 1] + sections[sections.len - 1].data.len;
-            section_offsets[sections.len] = std.mem.alignForward(T, @intCast(last_offset), @sizeOf(T));
-            section_offsets[sections.len + 1] = section_offsets[sections.len] + @as(u32, @intCast(shstrtab.data.len));
-            section_offsets[sections.len + 2] = section_offsets[sections.len + 1] + @as(u32, @intCast(strtab.data.len));
+            const shstrtab_offset: T = if (sections.len == 0) @intCast(after_headers) else section_offsets[sections.len - 1] + @as(T, @intCast(sections[sections.len - 1].data.len));
+            const strtab_offset: T = shstrtab_offset + @as(T, @intCast(shstrtab.data.len));
+            const symtab_offset: T = std.mem.alignForward(T, strtab_offset + @as(T, @intCast(strtab.data.len)), @sizeOf(T));
 
             try writer.writeStruct(Elf(T){
                 .entry = 0x0,
@@ -266,44 +258,40 @@ pub fn Elf(comptime T: type) type {
 
             for (sections, 0..) |sect, i| {
                 try writer.writeStruct(Section{
-                    .addr = 0,
-                    .name = shstrtab.map.get(sect.name) orelse unreachable,
                     .size = if (sect.type == .NOBITS) sect.vsize else @intCast(sect.data.len),
-                    .offset = section_offsets[i],
+                    .name = shstrtab.map.get(sect.name) orelse unreachable,
                     .addralign = sect.addralign,
+                    .offset = section_offsets[i],
                     .flags = sect.flags,
                     .type = sect.type,
                 }, .little);
             }
 
             try writer.writeStruct(Section{
-                .addr = 0,
-                .flags = 0,
                 .name = shstrtab.map.get(names.shstrtab) orelse unreachable,
                 .size = @intCast(shstrtab.data.len),
-                .offset = section_offsets[sections.len],
+                .offset = shstrtab_offset,
                 .type = .STRTAB,
+                .flags = 0,
             }, .little);
 
             try writer.writeStruct(Section{
-                .addr = 0,
-                .flags = 0,
                 .name = shstrtab.map.get(names.strtab) orelse unreachable,
                 .size = @intCast(strtab.data.len),
-                .offset = section_offsets[sections.len + 1],
+                .offset = strtab_offset,
                 .type = .STRTAB,
+                .flags = 0,
             }, .little);
 
             try writer.writeStruct(Section{
-                .addr = 0,
-                .flags = 0,
                 .name = shstrtab.map.get(names.symtab) orelse unreachable,
-                .size = @intCast(symtab.data.len),
-                .offset = section_offsets[sections.len + 2],
-                .type = .SYMTAB,
-                .info = symtab.nonlocal_start,
                 .link = @intCast(sections.len + 2),
+                .size = @intCast(symtab.data.len),
                 .entsize = @sizeOf(Symbol.Entry),
+                .info = symtab.nonlocal_start,
+                .offset = symtab_offset,
+                .type = .SYMTAB,
+                .flags = 0,
             }, .little);
 
             var written: T = @intCast(after_headers);
@@ -314,12 +302,17 @@ pub fn Elf(comptime T: type) type {
                 written = section_offsets[i] + @as(T, @intCast(sect.data.len));
             }
 
-            const def_sections = [_][]const u8{ shstrtab.data, strtab.data, symtab.data };
-            for (def_sections, 0..) |sect, i| {
-                for (written..section_offsets[sections.len + i]) |_| try writer.writeByte(0);
-                try writer.writeAll(sect);
-                written = section_offsets[sections.len + i] + @as(T, @intCast(sect.len));
-            }
+            for (written..shstrtab_offset) |_| try writer.writeByte(0); // alignment is 0x1 but jic
+            try writer.writeAll(shstrtab.data);
+            written += @intCast(shstrtab.data.len);
+
+            for (written..strtab_offset) |_| try writer.writeByte(0);
+            try writer.writeAll(strtab.data);
+            written += @intCast(strtab.data.len);
+
+            for (written..symtab_offset) |_| try writer.writeByte(0);
+            try writer.writeAll(symtab.data);
+            written = symtab_offset + @as(T, @intCast(symtab.data.len));
         }
 
         pub fn buildSymtab(allocator: std.mem.Allocator, strtab: std.StringHashMapUnmanaged(u32), sections: []const Section.Abstract, section_start: usize) !struct {
