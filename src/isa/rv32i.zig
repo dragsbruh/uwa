@@ -71,148 +71,123 @@ pub const Register = enum(u5) {
     x31,
 };
 
-pub const NativeInstruction = union(enum) {
-    pub const RType = packed struct {
-        opcode: u7,
-        rd: Register,
-        funct3: u3,
-        rs1: Register,
-        rs2: Register,
-        funct7: u7,
-    };
+pub const RType = packed struct {
+    opcode: u7,
+    rd: Register,
+    funct3: u3,
+    rs1: Register,
+    rs2: Register,
+    funct7: u7,
+};
 
-    pub const IType = packed struct {
-        opcode: u7,
-        rd: Register,
-        funct3: u3,
-        rs1: Register,
-        imm: u12,
-    };
+pub const IType = packed struct {
+    opcode: u7,
+    rd: Register,
+    funct3: u3,
+    rs1: Register,
+    imm: u12,
+};
 
-    pub const SType = packed struct {
-        opcode: u7,
-        imm1: u5 = 0,
-        funct3: u3,
-        rs1: Register,
-        rs2: Register,
-        imm2: u7 = 0,
+pub const SType = packed struct {
+    opcode: u7,
+    imm1: u5 = 0,
+    funct3: u3,
+    rs1: Register,
+    rs2: Register,
+    imm2: u7 = 0,
 
-        pub fn withImm(s: SType, imm: i12) NativeInstruction {
-            var self = s;
-            const umm = @as(u12, @bitCast(imm));
+    pub fn withImm(s: SType, imm: i12) SType {
+        var self = s;
+        const umm = @as(u12, @bitCast(imm));
 
-            self.imm1 = @as(u5, umm & 0b11111);
-            self.imm2 = @as(u7, umm & 0b1111111);
+        self.imm1 = @as(u5, umm & 0b11111);
+        self.imm2 = @as(u7, umm & 0b1111111);
 
-            return NativeInstruction{ .B = self };
-        }
-    };
-
-    pub const BType = packed struct {
-        opcode: u7,
-        imm3: u1 = 0, // imm[11]
-        imm1: u4 = 0, // imm[4:1]
-        funct3: u3,
-        rs1: Register,
-        rs2: Register,
-        imm2: u6 = 0, // imm[10:5]
-        imm4: u1 = 0, // imm[12]
-
-        pub fn withImm(b: BType, imm: i13) NativeInstruction {
-            var self = b;
-            const umm = @as(u13, @bitCast(imm));
-
-            // imm4 // imm3 // imm 2      // imm 1 // skip
-            // [0]     [0]  [0 0 0 0 0 0] [0 0 0 0]   0
-            self.imm1 = @as(u4, @intCast((umm >> 1) & 0b1111));
-            self.imm2 = @as(u6, @intCast((umm >> 5) & 0b111111));
-            self.imm3 = @as(u1, @intCast((umm >> 11) & 0b1));
-            self.imm4 = @as(u1, @intCast((umm >> 12) & 0b1));
-
-            return NativeInstruction{ .B = self };
-        }
-    };
-
-    pub const UType = packed struct {
-        opcode: u7,
-        rd: Register,
-        imm: u20,
-    };
-
-    pub const JType = packed struct {
-        opcode: u7,
-        rd: Register,
-        imm1: u8 = 0, // imm[19:12]
-        imm3: u1 = 0, // imm[11]
-        imm2: u10 = 0, // imm[10:1]
-        imm4: u1 = 0, // imm[20]
-
-        pub fn withImm(j: JType, imm: i21) NativeInstruction {
-            var self = j;
-            const umm = @as(u21, @bitCast(imm));
-
-            // imm4 // imm3    // imm 2               // imm 1          // skip
-            // [0]     [0]     [0 0 0 0 0 0 0 0 0 0]  [0 0 0 0 0 0 0 0] [0]
-
-            self.imm2 = @as(u10, (umm >> 1) & 0b1111111111);
-            self.imm3 = @as(u1, (umm >> 11) & 0b1);
-            self.imm1 = @as(u8, (umm >> 12) & 0b11111111);
-            self.imm4 = @as(u1, (umm >> 20) & 0b1);
-
-            return NativeInstruction{ .B = self };
-        }
-    };
-
-    pub fn write(self: NativeInstruction, writer: *std.Io.Writer) !void {
-        switch (self) {
-            .R => try writer.writeStruct(self.R, .little),
-            .I => try writer.writeStruct(self.I, .little),
-            .S => try writer.writeStruct(self.S, .little),
-            .U => try writer.writeStruct(self.U, .little),
-            .B => try writer.writeStruct(self.B, .little),
-            .J => try writer.writeStruct(self.J, .little),
-        }
+        return self;
     }
+};
 
-    R: RType,
-    I: IType,
-    S: SType,
-    B: BType,
-    U: UType,
-    J: JType,
+pub const BType = packed struct {
+    opcode: u7,
+    imm3: u1 = 0, // imm[11]
+    imm1: u4 = 0, // imm[4:1]
+    funct3: u3,
+    rs1: Register,
+    rs2: Register,
+    imm2: u6 = 0, // imm[10:5]
+    imm4: u1 = 0, // imm[12]
+
+    pub fn withImm(b: BType, imm: i13) BType {
+        var self = b;
+        const umm = @as(u13, @bitCast(imm));
+
+        // imm4 // imm3 // imm 2      // imm 1 // skip
+        // [0]     [0]  [0 0 0 0 0 0] [0 0 0 0]   0
+        self.imm1 = @as(u4, @intCast((umm >> 1) & 0b1111));
+        self.imm2 = @as(u6, @intCast((umm >> 5) & 0b111111));
+        self.imm3 = @as(u1, @intCast((umm >> 11) & 0b1));
+        self.imm4 = @as(u1, @intCast((umm >> 12) & 0b1));
+
+        return self;
+    }
+};
+
+pub const UType = packed struct {
+    opcode: u7,
+    rd: Register,
+    imm: u20,
+};
+
+pub const JType = packed struct {
+    opcode: u7,
+    rd: Register,
+    imm1: u8 = 0, // imm[19:12]
+    imm3: u1 = 0, // imm[11]
+    imm2: u10 = 0, // imm[10:1]
+    imm4: u1 = 0, // imm[20]
+
+    pub fn withImm(j: JType, imm: i21) JType {
+        var self = j;
+        const umm = @as(u21, @bitCast(imm));
+
+        // imm4 // imm3    // imm 2               // imm 1          // skip
+        // [0]     [0]     [0 0 0 0 0 0 0 0 0 0]  [0 0 0 0 0 0 0 0] [0]
+
+        self.imm2 = @as(u10, (umm >> 1) & 0b1111111111);
+        self.imm3 = @as(u1, (umm >> 11) & 0b1);
+        self.imm1 = @as(u8, (umm >> 12) & 0b11111111);
+        self.imm4 = @as(u1, (umm >> 20) & 0b1);
+
+        return self;
+    }
 };
 
 pub const encoder = struct {
     pub fn addi(writer: *std.Io.Writer, rd: Register, rs1: Register, imm: i12) !void {
-        const native = NativeInstruction{ .I = .{
+        try writer.writeStruct(IType{
             .opcode = 0x13,
             .funct3 = 0x0,
             .rd = rd,
             .rs1 = rs1,
             .imm = @bitCast(imm),
-        } };
-        try native.write(writer);
+        }, .little);
     }
 
     pub fn auipc(writer: *std.Io.Writer, rd: Register, imm: i20) !void {
-        const native = NativeInstruction{ .U = .{
+        try writer.writeStruct(UType{
             .opcode = 0x17,
             .rd = rd,
             .imm = @bitCast(imm),
-        } };
-        try native.write(writer);
+        }, .little);
     }
 
     pub fn ecall(writer: *std.Io.Writer) !void {
-        const native = NativeInstruction{
-            .I = .{
-                .opcode = 0x73,
-                .funct3 = 0x0,
-                .rd = .x0,
-                .rs1 = .x0,
-                .imm = 0x0,
-            },
-        };
-        try native.write(writer);
+        try writer.writeStruct(IType{
+            .opcode = 0x73,
+            .funct3 = 0x0,
+            .rd = .x0,
+            .rs1 = .x0,
+            .imm = 0x0,
+        }, .little);
     }
 };
