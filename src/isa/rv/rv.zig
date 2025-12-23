@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const Relocation = @import("../common.zig").Relocation;
+
 pub const Register = enum(u5) {
     pub const zero = Register.x0;
     pub const ra = Register.x1;
@@ -163,6 +165,22 @@ pub const JType = packed struct {
 };
 
 pub const encoder = struct {
+    pub const relocation = struct {
+        const relo = @import("relo.zig");
+
+        pub const addi = Relocation{
+            .absolute = relo.LO12_I,
+            .pc_relative = relo.PCREL_LO12_I,
+        };
+
+        pub const auipc = Relocation{
+            .absolute = relo.HI20,
+            .pc_relative = relo.PCREL_HI20,
+        };
+
+        pub const ecall = Relocation{};
+    };
+
     pub fn addi(writer: *std.Io.Writer, rd: Register, rs1: Register, imm: i12) !void {
         try writer.writeStruct(IType{
             .opcode = 0x13,

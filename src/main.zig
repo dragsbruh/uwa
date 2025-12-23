@@ -1,9 +1,8 @@
 const std = @import("std");
 
-const rv32 = @import("isa/rv32i.zig");
+const rv32 = @import("isa/rv/rv.zig");
 
 const elf32 = @import("elf.zig").Elf(u32);
-const elf64 = @import("elf.zig").Elf(u64);
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -35,23 +34,21 @@ pub fn main() !void {
     const code = try code_accum.toOwnedSlice();
     defer allocator.free(code);
 
-    const choice = elf32;
-
-    try choice.emit(allocator, stdout, .NONE, .RISCV, &.{
-        choice.Section.Abstract{
+    try elf32.emit(allocator, stdout, .NONE, .RISCV, &.{
+        elf32.Section.Abstract{
             .name = ".text",
             .data = code,
             .type = .PROGBITS,
-            .flags = choice.Section.Flag.ALLOC | choice.Section.Flag.EXEC,
+            .flags = elf32.Section.Flag.ALLOC | elf32.Section.Flag.EXEC,
             .addralign = 0x4,
             .symbols = &.{
-                choice.Symbol.Abstract{
+                elf32.Symbol.Abstract{
                     .binding = .GLOBAL,
                     .name = "_start",
                     .offset = 0,
                     .type = .FUNC,
                 },
-                choice.Symbol.Abstract{
+                elf32.Symbol.Abstract{
                     .binding = .GLOBAL,
                     .name = "pcrel_hi",
                     .offset = 4,
@@ -59,29 +56,29 @@ pub fn main() !void {
                 },
             },
             .relocations = &.{
-                choice.Rela.Abstract{
+                elf32.Rela.Abstract{
                     .symbol = "msg",
                     .addend = 0,
                     .offset = 4,
-                    .type = 23,
+                    .type = rv32.encoder.relocation.auipc.pc_relative orelse unreachable,
                 },
-                choice.Rela.Abstract{
+                elf32.Rela.Abstract{
                     .symbol = "pcrel_hi",
                     .addend = 0,
                     .offset = 8,
-                    .type = 24,
+                    .type = rv32.encoder.relocation.addi.pc_relative orelse unreachable,
                 },
             },
             .rela_name = ".rela.text",
         },
 
-        choice.Section.Abstract{
+        elf32.Section.Abstract{
             .name = ".data",
             .data = msg,
             .type = .PROGBITS,
-            .flags = choice.Section.Flag.ALLOC,
+            .flags = elf32.Section.Flag.ALLOC,
             .symbols = &.{
-                choice.Symbol.Abstract{
+                elf32.Symbol.Abstract{
                     .binding = .GLOBAL,
                     .name = "msg",
                     .offset = 0,
