@@ -2,6 +2,7 @@ const std = @import("std");
 
 const BitWidth = enum(u8) { u32 = 0x1, u64 = 0x2 };
 
+/// TODO: this sucks, make it better
 pub fn Elf(comptime T: type) type {
     const bitwidth = switch (T) {
         u32 => BitWidth.u32,
