@@ -1,6 +1,7 @@
 const std = @import("std");
 
-const Relocation = @import("../common.zig").Relocation;
+const relocations = @import("./relo.zig");
+const Spec = @import("../common.zig").Spec(Register, null);
 
 pub const Register = enum(u5) {
     pub const zero = Register.x0;
@@ -165,22 +166,6 @@ pub const JType = packed struct {
 };
 
 pub const encoder = struct {
-    pub const relocation = struct {
-        const relo = @import("relo.zig");
-
-        pub const addi = Relocation{
-            .absolute = relo.LO12_I,
-            .pc_relative = relo.PCREL_LO12_I,
-        };
-
-        pub const auipc = Relocation{
-            .absolute = relo.HI20,
-            .pc_relative = relo.PCREL_HI20,
-        };
-
-        pub const ecall = Relocation{};
-    };
-
     pub fn addi(writer: *std.Io.Writer, rd: Register, rs1: Register, imm: i12) !void {
         try writer.writeStruct(IType{
             .opcode = 0x13,
@@ -208,4 +193,61 @@ pub const encoder = struct {
             .imm = 0x0,
         }, .little);
     }
+};
+
+pub const spec = struct {
+    // wrapper functions assume spec is satisfied (bounds check etc)
+    pub const wraps = struct {
+        pub inline fn addi(writer: *std.Io.Writer, operands: []const Spec.Operand) !void {
+            return encoder.addi(writer, operands[0].register, operands[1].register, @intCast(operands[2].immediate));
+        }
+
+        pub inline fn auipc(writer: *std.Io.Writer, operands: []const Spec.Operand) !void {
+            return encoder.auipc(writer, operands[0].register, @intCast(operands[1].immediate));
+        }
+
+        pub inline fn ecall(writer: *std.Io.Writer, _: []const Spec.Operand) !void {
+            return encoder.ecall(writer);
+        }
+    };
+
+    pub const addi = Spec{
+        .name = "addi",
+        .operands = &.{ .register, .register, .immediate },
+        .fun = &wraps.addi,
+        .constraint = .{
+            .immediate = .{
+                .bits = 12,
+                .signed = true,
+            },
+        },
+        .relocation = .{
+            .absolute = relocations.LO12_I,
+            .pc_relative = relocations.PCREL_LO12_I,
+        },
+    };
+
+    pub const auipc = Spec{
+        .name = "auipc",
+        .operands = &.{ .register, .immediate },
+        .fun = &wraps.auipc,
+        .constraint = .{
+            .immediate = .{
+                .bits = 20,
+                .signed = true,
+            },
+        },
+        .relocation = .{
+            .absolute = relocations.HI20,
+            .pc_relative = relocations.PCREL_HI20,
+        },
+    };
+
+    pub const ecall = Spec{
+        .name = "ecall",
+        .operands = &.{},
+        .fun = &wraps.ecall,
+        .constraint = .{}, // missing = null = constraint is not used
+        .relocation = .{},
+    };
 };

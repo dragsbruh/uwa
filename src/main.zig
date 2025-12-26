@@ -20,16 +20,43 @@ pub fn main() !void {
 
     const msg = "sesbian lex\n";
 
-    try rv32.encoder.addi(writer, .a0, .x0, 1);
-    try rv32.encoder.auipc(writer, .a1, 0);
-    try rv32.encoder.addi(writer, .a1, .a1, 0);
-    try rv32.encoder.addi(writer, .a2, .x0, msg.len);
-    try rv32.encoder.addi(writer, .a7, .x0, 64);
-    try rv32.encoder.ecall(writer);
+    try rv32.spec.addi.fun(writer, &.{
+        .{ .register = .x0 },
+        .{ .register = .x0 },
+        .{ .immediate = 1 },
+    });
+    try rv32.spec.auipc.fun(writer, &.{
+        .{ .register = .a1 },
+        .{ .immediate = 0 },
+    });
+    try rv32.spec.addi.fun(writer, &.{
+        .{ .register = .a1 },
+        .{ .register = .a1 },
+        .{ .immediate = 0 },
+    });
+    try rv32.spec.addi.fun(writer, &.{
+        .{ .register = .a2 },
+        .{ .register = .x0 },
+        .{ .immediate = msg.len },
+    });
+    try rv32.spec.addi.fun(writer, &.{
+        .{ .register = .a7 },
+        .{ .register = .x0 },
+        .{ .immediate = 64 },
+    });
+    try rv32.spec.ecall.fun(writer, &.{});
 
-    try rv32.encoder.addi(writer, .a0, .x0, 69);
-    try rv32.encoder.addi(writer, .a7, .x0, 93);
-    try rv32.encoder.ecall(writer);
+    try rv32.spec.addi.fun(writer, &.{
+        .{ .register = .a0 },
+        .{ .register = .x0 },
+        .{ .immediate = 69 },
+    });
+    try rv32.spec.addi.fun(writer, &.{
+        .{ .register = .a7 },
+        .{ .register = .x0 },
+        .{ .immediate = 93 },
+    });
+    try rv32.spec.ecall.fun(writer, &.{});
 
     const code = try code_accum.toOwnedSlice();
     defer allocator.free(code);
@@ -60,13 +87,13 @@ pub fn main() !void {
                     .symbol = "msg",
                     .addend = 0,
                     .offset = 4,
-                    .type = rv32.encoder.relocation.auipc.pc_relative orelse unreachable,
+                    .type = rv32.spec.auipc.relocation.pc_relative orelse unreachable,
                 },
                 elf32.Rela.Abstract{
                     .symbol = "pcrel_hi",
                     .addend = 0,
                     .offset = 8,
-                    .type = rv32.encoder.relocation.addi.pc_relative orelse unreachable,
+                    .type = rv32.spec.addi.relocation.pc_relative orelse unreachable,
                 },
             },
             .rela_name = ".rela.text",
